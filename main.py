@@ -7,6 +7,7 @@ from forecast import *
 
 scale_factor = 10000000
 forecast_horizon = 120
+time_step = 3
 
 input_path = f'input/inputBanorte.csv'
 df = pd.read_csv(input_path, delimiter=';', index_col='Mes', parse_dates=['Mes'], dayfirst=True)
@@ -87,10 +88,45 @@ forecast_df_gjr_garch = pd.DataFrame({'Mes': forecast_dates,
                                       'Superior 95': upper_band_gjr_garch})
 forecast_df_gjr_garch.set_index('Mes', inplace=True)
 
-# Output
+###################################################
+################# LSTM ############################
+###################################################
+
+pred_lstm, sup_lstm, inf_lstm = lstm_train_with_bands(df['Medio'], forecast_horizon, time_step)
+forecast_df_lstm = pd.DataFrame({'Mes': forecast_dates,
+                                 'Pronóstico': pred_lstm,
+                                 'Inferior 95': inf_lstm,
+                                 'Superior 95': sup_lstm})
+forecast_df_lstm.set_index('Mes', inplace=True)
+
+###################################################
+################# PERCEPTRON ######################
+###################################################
+
+pred_nn, sup_nn, inf_nn = nn_train_with_bands(df['Medio'], forecast_horizon, time_step)
+forecast_df_nn = pd.DataFrame({'Mes': forecast_dates,
+                                 'Pronóstico': pred_nn,
+                                 'Inferior 95': inf_nn,
+                                 'Superior 95': sup_nn})
+forecast_df_nn.set_index('Mes', inplace=True)
+
+###################################################
+################# RANDOM FOREST ###################
+###################################################
+
+pred_rf, sup_rf, inf_rf = rf_train_with_bands(df['Medio'], forecast_horizon, time_step)
+forecast_df_rf = pd.DataFrame({'Mes': forecast_dates,
+                                 'Pronóstico': pred_rf,
+                                 'Inferior 95': inf_rf,
+                                 'Superior 95': sup_rf})
+forecast_df_rf.set_index('Mes', inplace=True)
+
 
 output_path = f'output/pronostico.xlsx'
 with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
     forecast_df_arch.to_excel(writer, sheet_name='ARCH')
     forecast_df_garch.to_excel(writer, sheet_name='GARCH')
     forecast_df_gjr_garch.to_excel(writer, sheet_name='GJR_GARCH')
+    forecast_df_lstm.to_excel(writer, sheet_name='LSTM')
+    forecast_df_nn.to_excel(writer, sheet_name='NN')
+    forecast_df_rf.to_excel(writer, sheet_name='RANDOM_FOREST')
