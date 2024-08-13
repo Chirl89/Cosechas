@@ -12,9 +12,10 @@ df = pd.read_csv(input_path, delimiter=';', index_col='Mes', parse_dates=['Mes']
 df['Medio'] = df['Medio'].str.replace('.', '').str.replace(',', '.').astype(float)
 df.index = pd.DatetimeIndex(df.index).to_period('M').to_timestamp()
 
-data_scaled = df['Medio'].dropna() / scale_factor
+data = df['Medio'].dropna()
+# data_scaled = df['Medio'].dropna() / scale_factor
 
-model_arima = ARIMA(data_scaled, order=(0, 1, 0))
+model_arima = ARIMA(data, order=(0, 1, 0))
 fitted_arima = model_arima.fit()
 residuales = fitted_arima.resid
 
@@ -27,45 +28,62 @@ forecast_dates = pd.date_range(start=df.index[-1] + pd.DateOffset(months=1), per
 ################# ARCH ############################
 ###################################################
 
-model_arch = arch_model(residuales, vol='ARCH', p=1)
+model_arch = arch_model(residuales / scale_factor, vol='ARCH', p=1)
 fitted_arch = model_arch.fit(disp='off')
 
 vol_forecast_arch = fitted_arch.forecast(horizon=forecast_horizon)
 conditional_vol_arch = vol_forecast_arch.variance[-1:]
 
-predicted_values_arch = predicted_mean + conditional_vol_arch.values[-1, :] ** 0.5
+predicted_values_arch = predicted_mean + (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
+upper_band_arch = predicted_mean + 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
+lower_band_arch = predicted_mean - 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
 
-forecast_df_arch = pd.DataFrame({'Mes': forecast_dates, 'Pronóstico': predicted_values_arch * scale_factor})
+forecast_df_arch = pd.DataFrame({'Mes': forecast_dates,
+                                 'Pronóstico': predicted_values_arch,
+                                 'Inferior 95': lower_band_arch,
+                                 'Superior 95': upper_band_arch})
+
 forecast_df_arch.set_index('Mes', inplace=True)
 
 ###################################################
 ################# GARCH ###########################
 ###################################################
 
-model_garch = arch_model(residuales, vol='GARCH', p=1, q=1)
+model_garch = arch_model(residuales / scale_factor, vol='GARCH', p=1, q=1)
 fitted_garch = model_garch.fit(disp='off')
 
 vol_forecast_garch = fitted_garch.forecast(horizon=forecast_horizon)
 conditional_vol_garch = vol_forecast_garch.variance[-1:]
 
-predicted_values_garch = predicted_mean + conditional_vol_garch.values[-1, :] ** 0.5
+predicted_values_garch = predicted_mean + (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
+upper_band_garch = predicted_mean + 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
+lower_band_garch = predicted_mean - 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
 
-forecast_df_garch = pd.DataFrame({'Mes': forecast_dates, 'Pronóstico': predicted_values_garch * scale_factor})
+forecast_df_garch = pd.DataFrame({'Mes': forecast_dates,
+                                  'Pronóstico': predicted_values_garch,
+                                  'Inferior 95': lower_band_garch,
+                                  'Superior 95': upper_band_garch})
+
 forecast_df_garch.set_index('Mes', inplace=True)
 
 ###################################################
 ################# GJR-GARCH #######################
 ###################################################
 
-model_gjr_garch = arch_model(residuales, vol='GARCH', p=1, o=1, q=1)
+model_gjr_garch = arch_model(residuales / scale_factor, vol='GARCH', p=1, o=1, q=1)
 fitted_gjr_garch = model_gjr_garch.fit(disp='off')
 
 vol_forecast_gjr_garch = fitted_gjr_garch.forecast(horizon=forecast_horizon)
 conditional_vol_gjr_garch = vol_forecast_gjr_garch.variance[-1:]
 
-predicted_values_gjr_garch = predicted_mean + conditional_vol_gjr_garch.values[-1, :] ** 0.5
+predicted_values_gjr_garch = predicted_mean + (conditional_vol_gjr_garch.values[-1, :] ** 0.5) * scale_factor
+upper_band_gjr_garch = predicted_mean + 1.96 * (conditional_vol_gjr_garch.values[-1, :] ** 0.5) * scale_factor
+lower_band_gjr_garch = predicted_mean - 1.96 * (conditional_vol_gjr_garch.values[-1, :] ** 0.5) * scale_factor
 
-forecast_df_gjr_garch = pd.DataFrame({'Mes': forecast_dates, 'Pronóstico': predicted_values_gjr_garch * scale_factor})
+forecast_df_gjr_garch = pd.DataFrame({'Mes': forecast_dates,
+                                      'Pronóstico': predicted_values_gjr_garch,
+                                      'Inferior 95': lower_band_gjr_garch,
+                                      'Superior 95': upper_band_gjr_garch})
 forecast_df_gjr_garch.set_index('Mes', inplace=True)
 
 # Output
