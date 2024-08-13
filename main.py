@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+from metrics import *
 from arch import arch_model
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
@@ -14,7 +14,8 @@ df = pd.read_csv(input_path, delimiter=';', index_col='Mes', parse_dates=['Mes']
 df['Medio'] = df['Medio'].str.replace('.', '').str.replace(',', '.').astype(float)
 df.index = pd.DatetimeIndex(df.index).to_period('M').to_timestamp()
 
-data = df['Medio'].dropna()
+data_pre = df['Medio'].dropna()
+data = data_pre[:-2]
 # data_scaled = df['Medio'].dropna() / scale_factor
 
 model_arima = ARIMA(data, order=(0, 1, 0))
@@ -121,6 +122,33 @@ forecast_df_rf = pd.DataFrame({'Mes': forecast_dates,
                                  'Superior 95': sup_rf})
 forecast_df_rf.set_index('Mes', inplace=True)
 
+actual_values = data_pre[-2:].values
+
+# ARCH
+mae_arch, mse_arch, rmse_arch, mape_arch = calculate_metrics(actual_values, forecast_df_arch['Pronóstico'][:2].values)
+
+# GARCH
+mae_garch, mse_garch, rmse_garch, mape_garch = calculate_metrics(actual_values, forecast_df_garch['Pronóstico'][:2].values)
+
+# GJR-GARCH
+mae_gjr_garch, mse_gjr_garch, rmse_gjr_garch, mape_gjr_garch = calculate_metrics(actual_values, forecast_df_gjr_garch['Pronóstico'][:2].values)
+
+# LSTM
+mae_lstm, mse_lstm, rmse_lstm, mape_lstm = calculate_metrics(actual_values, forecast_df_lstm['Pronóstico'][:2].values)
+
+# Perceptrón (NN)
+mae_nn, mse_nn, rmse_nn, mape_nn = calculate_metrics(actual_values, forecast_df_nn['Pronóstico'][:2].values)
+
+# Random Forest
+mae_rf, mse_rf, rmse_rf, mape_rf = calculate_metrics(actual_values, forecast_df_rf['Pronóstico'][:2].values)
+
+metrics_df = pd.DataFrame({
+    'Modelo': ['ARCH', 'GARCH', 'GJR-GARCH', 'LSTM', 'Perceptrón', 'Random Forest'],
+    'MAE': [mae_arch, mae_garch, mae_gjr_garch, mae_lstm, mae_nn, mae_rf],
+    'MSE': [mse_arch, mse_garch, mse_gjr_garch, mse_lstm, mse_nn, mse_rf],
+    'RMSE': [rmse_arch, rmse_garch, rmse_gjr_garch, rmse_lstm, rmse_nn, rmse_rf],
+    'MAPE': [mape_arch, mape_garch, mape_gjr_garch, mape_lstm, mape_nn, mape_rf]
+})
 
 output_path = f'output/pronostico.xlsx'
 with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
@@ -130,3 +158,4 @@ with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
     forecast_df_lstm.to_excel(writer, sheet_name='LSTM')
     forecast_df_nn.to_excel(writer, sheet_name='NN')
     forecast_df_rf.to_excel(writer, sheet_name='RANDOM_FOREST')
+    metrics_df.to_excel(writer, sheet_name='Metrics')
