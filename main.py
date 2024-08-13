@@ -3,6 +3,7 @@ import numpy as np
 from arch import arch_model
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
+from forecast import *
 
 scale_factor = 10000000
 forecast_horizon = 120
