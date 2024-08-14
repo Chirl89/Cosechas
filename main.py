@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
 from forecast import *
 
-scale_factor = 10000000
+scale_factor = 100000000
 forecast_horizon = 120
-time_step = 30
+time_step = 120
 
 # input_path = f'input/inputBanorte.csv'
 input_path = f'output/dataframe_completo.csv'

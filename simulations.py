@@ -18,7 +18,7 @@ std_retorno = df['Retorno'].std()
 
 # Configuraciones para la simulación
 num_simulaciones = 1000
-horizonte = 240  # 12 meses hacia atrás
+horizonte = 500  # 500 meses hacia atrás
 
 # Inicialización de las simulaciones
 simulaciones = np.zeros((horizonte, num_simulaciones))
