@@ -15,7 +15,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.backend import clear_session
 
 
-def lstm_train_with_bands(vol, horizon, time_step=3):
+def lstm_train_with_bands(vol, horizon, time_step=30):
     # Preprocesamiento de los datos
     set_entrenamiento = vol.to_frame()
     sc = MinMaxScaler(feature_range=(0, 1))
@@ -40,7 +40,7 @@ def lstm_train_with_bands(vol, horizon, time_step=3):
 
     # Entrenamiento del modelo
     early_stopping = EarlyStopping(monitor='loss', patience=2, restore_best_weights=True)
-    modelo.fit(X, Y, epochs=10, batch_size=16, verbose=0, callbacks=[early_stopping])
+    modelo.fit(X, Y, epochs=5, batch_size=16, verbose=0, callbacks=[early_stopping])
 
     # Evaluación del modelo en el conjunto de entrenamiento para obtener errores
     predicciones_entrenamiento = modelo.predict(X)
@@ -68,22 +68,26 @@ def lstm_train_with_bands(vol, horizon, time_step=3):
         nuevo_bloque = np.append(ultimo_bloque[:, 1:, :], prediccion_reshaped, axis=1)
         ultimo_bloque = nuevo_bloque
 
-    # Desescalar las predicciones
-    predicciones = np.array(predicciones).reshape(-1, 1)
-    predicciones_desescaladas = sc.inverse_transform(predicciones)
+    # Convertir predicciones y errores a arrays para el cálculo de bandas
+    predicciones = np.array(predicciones)
 
-    # Cálculo de las bandas superiores e inferiores
-    banda_superior = predicciones_desescaladas.flatten() + 2 * desviacion_estandar
-    banda_inferior = predicciones_desescaladas.flatten() - 2 * desviacion_estandar
+    # Calcular las bandas superior e inferior en la escala normalizada
+    banda_superior = predicciones + 2 * desviacion_estandar
+    banda_inferior = predicciones - 2 * desviacion_estandar
+
+    # Desescalar las predicciones y las bandas
+    predicciones_desescaladas = sc.inverse_transform(predicciones.reshape(-1, 1)).flatten()
+    banda_superior_desescalada = sc.inverse_transform(banda_superior.reshape(-1, 1)).flatten()
+    banda_inferior_desescalada = sc.inverse_transform(banda_inferior.reshape(-1, 1)).flatten()
 
     # Liberar memoria
     del set_entrenamiento_escalado, ultimo_bloque
     gc.collect()
 
-    return predicciones_desescaladas.flatten(), banda_superior, banda_inferior
+    return predicciones_desescaladas, banda_superior_desescalada, banda_inferior_desescalada
 
 
-def nn_train_with_bands(vol, horizon, time_step=3):
+def nn_train_with_bands(vol, horizon, time_step=30):
     # Preprocesamiento de los datos
     set_entrenamiento = vol.to_frame()
     sc = MinMaxScaler(feature_range=(0, 1))
@@ -134,22 +138,26 @@ def nn_train_with_bands(vol, horizon, time_step=3):
         # Actualizar ultimo_bloque para incluir la nueva predicción
         ultimo_bloque = np.append(ultimo_bloque[:, 1:], prediccion, axis=1)
 
-    # Desescalar las predicciones
-    predicciones = np.array(predicciones).reshape(-1, 1)
-    predicciones_desescaladas = sc.inverse_transform(predicciones)
+    # Convertir predicciones y errores a arrays para el cálculo de bandas
+    predicciones = np.array(predicciones)
 
-    # Cálculo de las bandas superiores e inferiores
-    banda_superior = predicciones_desescaladas.flatten() + 2 * desviacion_estandar
-    banda_inferior = predicciones_desescaladas.flatten() - 2 * desviacion_estandar
+    # Calcular las bandas superior e inferior en la escala normalizada
+    banda_superior = predicciones + 2 * desviacion_estandar
+    banda_inferior = predicciones - 2 * desviacion_estandar
+
+    # Desescalar las predicciones y las bandas
+    predicciones_desescaladas = sc.inverse_transform(predicciones.reshape(-1, 1)).flatten()
+    banda_superior_desescalada = sc.inverse_transform(banda_superior.reshape(-1, 1)).flatten()
+    banda_inferior_desescalada = sc.inverse_transform(banda_inferior.reshape(-1, 1)).flatten()
 
     # Liberar memoria
     del set_entrenamiento_escalado, ultimo_bloque
     gc.collect()
 
-    return predicciones_desescaladas.flatten(), banda_superior, banda_inferior
+    return predicciones_desescaladas, banda_superior_desescalada, banda_inferior_desescalada
 
 
-def rf_train_with_bands(vol, horizon, time_step=3):
+def rf_train_with_bands(vol, horizon, time_step=30):
     # Preprocesamiento de los datos
     set_entrenamiento = vol.to_frame()
     sc = MinMaxScaler(feature_range=(0, 1))
@@ -165,7 +173,7 @@ def rf_train_with_bands(vol, horizon, time_step=3):
     X, Y = np.array(X), np.array(Y)
 
     # Entrenamiento del modelo Random Forest
-    modelo = RandomForestRegressor(n_estimators=100)
+    modelo = RandomForestRegressor(n_estimators=500, max_depth=30, min_samples_split=10, min_samples_leaf=4)
     modelo.fit(X, Y)
 
     # Evaluación del modelo en el conjunto de entrenamiento para obtener errores
@@ -188,16 +196,20 @@ def rf_train_with_bands(vol, horizon, time_step=3):
         # Actualizar ultimo_bloque para incluir la nueva predicción
         ultimo_bloque = np.append(ultimo_bloque[1:], prediccion)
 
-    # Desescalar las predicciones
-    predicciones = np.array(predicciones).reshape(-1, 1)
-    predicciones_desescaladas = sc.inverse_transform(predicciones)
+    # Convertir predicciones y errores a arrays para el cálculo de bandas
+    predicciones = np.array(predicciones)
 
-    # Cálculo de las bandas superiores e inferiores
-    banda_superior = predicciones_desescaladas.flatten() + 2 * desviacion_estandar
-    banda_inferior = predicciones_desescaladas.flatten() - 2 * desviacion_estandar
+    # Calcular las bandas superior e inferior en la escala normalizada
+    banda_superior = predicciones + 2 * desviacion_estandar
+    banda_inferior = predicciones - 2 * desviacion_estandar
+
+    # Desescalar las predicciones y las bandas
+    predicciones_desescaladas = sc.inverse_transform(predicciones.reshape(-1, 1)).flatten()
+    banda_superior_desescalada = sc.inverse_transform(banda_superior.reshape(-1, 1)).flatten()
+    banda_inferior_desescalada = sc.inverse_transform(banda_inferior.reshape(-1, 1)).flatten()
 
     # Liberar memoria
     del set_entrenamiento_escalado, ultimo_bloque
     gc.collect()
 
-    return predicciones_desescaladas.flatten(), banda_superior, banda_inferior
+    return predicciones_desescaladas, banda_superior_desescalada, banda_inferior_desescalada

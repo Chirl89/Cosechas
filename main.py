@@ -7,9 +7,10 @@ from forecast import *
 
 scale_factor = 10000000
 forecast_horizon = 120
-time_step = 3
+time_step = 30
 
-input_path = f'input/inputBanorte.csv'
+# input_path = f'input/inputBanorte.csv'
+input_path = f'output/dataframe_completo.csv'
 df = pd.read_csv(input_path, delimiter=';', index_col='Mes', parse_dates=['Mes'], dayfirst=True)
 df['Medio'] = df['Medio'].str.replace('.', '').str.replace(',', '.').astype(float)
 df.index = pd.DatetimeIndex(df.index).to_period('M').to_timestamp()
