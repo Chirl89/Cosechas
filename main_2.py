@@ -12,7 +12,7 @@ from datetime import timedelta
 warnings.filterwarnings("ignore")
 
 # Cargar los datos
-data = pd.read_csv(f'input/inputBanorte - 2.csv', sep=';', decimal=',')
+data = pd.read_csv(f'input/cosechas.csv', sep=';', decimal=',')
 
 # Reemplazar separadores de miles y convertir a float
 data['Medio'] = data['Medio'].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
