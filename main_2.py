@@ -64,7 +64,7 @@ arch_forecast = arch_fit.forecast(horizon=forecast_horizon, method='simulation')
 # Predicciones y desviación estándar para ARCH
 arch_mean = inverse_transform(arch_forecast.simulations.values.mean(axis=1).ravel()[:forecast_horizon])
 arch_std = inverse_transform(arch_forecast.simulations.values.std(axis=1).ravel()[:forecast_horizon]) * scaling_factor
-results['ARCH'] = (arch_mean, arch_std)
+results['ARCH'] = (arch_mean, abs(arch_mean - arch_std))
 
 # Calcular las métricas de error para ARCH
 y_test_actual = inverse_transform(test.flatten())
@@ -80,7 +80,7 @@ garch_forecast = garch_fit.forecast(horizon=forecast_horizon, method='simulation
 # Predicciones y desviación estándar para GARCH
 garch_mean = inverse_transform(garch_forecast.simulations.values.mean(axis=1).ravel()[:forecast_horizon])
 garch_std = inverse_transform(garch_forecast.simulations.values.std(axis=1).ravel()[:forecast_horizon]) * scaling_factor
-results['GARCH'] = (garch_mean, garch_std)
+results['GARCH'] = (garch_mean, abs(garch_mean - garch_std))
 
 # Calcular las métricas de error para GARCH
 y_test_pred_garch = garch_mean[:len(y_test_actual)]
@@ -95,7 +95,7 @@ gjr_forecast = gjr_fit.forecast(horizon=forecast_horizon, method='simulation')
 # Predicciones y desviación estándar para GJR-GARCH
 gjr_mean = inverse_transform(gjr_forecast.simulations.values.mean(axis=1).ravel()[:forecast_horizon])
 gjr_std = inverse_transform(gjr_forecast.simulations.values.std(axis=1).ravel()[:forecast_horizon]) * scaling_factor
-results['GJR-GARCH'] = (gjr_mean, gjr_std)
+results['GJR-GARCH'] = (gjr_mean, abs(gjr_mean - gjr_std))
 
 # Calcular las métricas de error para GJR-GARCH
 y_test_pred_gjr = gjr_mean[:len(y_test_actual)]
