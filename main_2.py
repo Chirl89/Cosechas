@@ -150,4 +150,4 @@ with pd.ExcelWriter('output/predicciones_modelos_con_intervalos.xlsx') as writer
         })
         output_df.to_excel(writer, sheet_name=model_name, index=False)
 
-print("Predicciones y intervalos de confianza guardados en 'predicciones_modelos_con_intervalos.xlsx'")
+print("Predicciones y intervalos de confianza guardados en 'output/predicciones_modelos_con_intervalos.xlsx'")
