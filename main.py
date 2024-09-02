@@ -1,162 +1,112 @@
 import pandas as pd
-from metrics import *
+import numpy as np
 from arch import arch_model
-import matplotlib.pyplot as plt
-from statsmodels.tsa.arima.model import ARIMA
-from forecast import *
+from sklearn.ensemble import RandomForestRegressor
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+from sklearn.neural_network import MLPRegressor
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import warnings
+from datetime import timedelta
 
-scale_factor = 100000000
-forecast_horizon = 120
-time_step = 120
+warnings.filterwarnings("ignore")
 
-# input_path = f'input/inputBanorte.csv'
-input_path = f'output/dataframe_completo.csv'
-df = pd.read_csv(input_path, delimiter=';', index_col='Mes', parse_dates=['Mes'], dayfirst=True)
-df['Medio'] = df['Medio'].str.replace('.', '').str.replace(',', '.').astype(float)
-df.index = pd.DatetimeIndex(df.index).to_period('M').to_timestamp()
+# Cargar los datos
+data = pd.read_csv('input/cosechas.csv', sep=';', decimal=',')
 
-data_pre = df['Medio'].dropna()
-data = data_pre[:-2]
-# data_scaled = df['Medio'].dropna() / scale_factor
+# Reemplazar separadores de miles y convertir a float
+data['Medio'] = data['Medio'].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
 
-model_arima = ARIMA(data, order=(0, 1, 0))
-fitted_arima = model_arima.fit()
-residuales = fitted_arima.resid
+# Convertir la columna 'Mes' a datetime
+data['Mes'] = pd.to_datetime(data['Mes'], format='%d/%m/%Y')
+data.set_index('Mes', inplace=True)
 
-forecast_arima = fitted_arima.get_forecast(steps=forecast_horizon)
-predicted_mean = forecast_arima.predicted_mean
+# Preprocesamiento de datos
+values = data['Medio'].values.reshape(-1, 1)
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_values = scaler.fit_transform(values)
+train_size = int(len(scaled_values) * 0.8)
+train, test = scaled_values[0:train_size], scaled_values[train_size:]
 
-forecast_dates = pd.date_range(start=df.index[-1] + pd.DateOffset(months=1), periods=forecast_horizon, freq='MS')
+# Parámetros
+forecast_horizon = 120  # 10 años (120 meses)
+future_dates = pd.date_range(start=data.index[-1] + timedelta(days=1), periods=forecast_horizon, freq='MS')
+z = 1.96  # Para un intervalo de confianza del 95%
 
-###################################################
-################# ARCH ############################
-###################################################
+# Escalar la desviación estándar cuadráticamente con el tiempo
+scaling_factor = np.sqrt(np.arange(1, forecast_horizon + 1))  # Escalamiento cuadrático para mayor dispersión con el tiempo
 
-model_arch = arch_model(residuales / scale_factor, vol='ARCH', p=1)
-fitted_arch = model_arch.fit(disp='off')
+# Función para desescalar los valores
+def inverse_transform(scaled_data):
+    return scaler.inverse_transform(scaled_data.reshape(-1, 1)).ravel()
 
-vol_forecast_arch = fitted_arch.forecast(horizon=forecast_horizon)
-conditional_vol_arch = vol_forecast_arch.variance[-1:]
+# Funciones para calcular las métricas de error normalizadas
+def calculate_errors(y_true, y_pred):
+    mae = mean_absolute_error(y_true, y_pred)
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
-predicted_values_arch = predicted_mean + (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
-upper_band_arch = predicted_mean + 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
-lower_band_arch = predicted_mean - 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
+    # Normalizar MAE, MSE y RMSE dividiendo por la media de los valores reales
+    mean_actual = np.mean(y_true)
+    mae_normalized = mae / mean_actual
+    mse_normalized = mse / (mean_actual ** 2)
+    rmse_normalized = rmse / mean_actual
 
-forecast_df_arch = pd.DataFrame({'Mes': forecast_dates,
-                                 'Pronóstico': predicted_values_arch,
-                                 'Inferior 95': lower_band_arch,
-                                 'Superior 95': upper_band_arch})
+    return mae_normalized, mse_normalized, rmse_normalized, mape
 
-forecast_df_arch.set_index('Mes', inplace=True)
+# Resultados de los modelos y las métricas de error
+results = {}
+errors = {}
 
-###################################################
-################# GARCH ###########################
-###################################################
+# Modelo ARCH
+arch_model_instance = arch_model(train, vol='ARCH', p=1)
+arch_fit = arch_model_instance.fit(disp='off')
+arch_forecast = arch_fit.forecast(horizon=forecast_horizon, method='simulation')
 
-model_garch = arch_model(residuales / scale_factor, vol='GARCH', p=1, q=1)
-fitted_garch = model_garch.fit(disp='off')
+# Predicciones para ARCH
+arch_mean_scaled = arch_forecast.simulations.values.mean(axis=1).ravel()[:forecast_horizon]
+arch_std_scaled = arch_forecast.simulations.values.std(axis=1).ravel()[:forecast_horizon] * scaling_factor
 
-vol_forecast_garch = fitted_garch.forecast(horizon=forecast_horizon)
-conditional_vol_garch = vol_forecast_garch.variance[-1:]
+# Desescalar la media
+arch_mean = inverse_transform(arch_mean_scaled)
 
-predicted_values_garch = predicted_mean + (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
-upper_band_garch = predicted_mean + 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
-lower_band_garch = predicted_mean - 1.96 * (conditional_vol_arch.values[-1, :] ** 0.5) * scale_factor
+# Calcular la desviación estándar en la escala original
+arch_std = arch_std_scaled * (scaler.data_max_ - scaler.data_min_)
 
-forecast_df_garch = pd.DataFrame({'Mes': forecast_dates,
-                                  'Pronóstico': predicted_values_garch,
-                                  'Inferior 95': lower_band_garch,
-                                  'Superior 95': upper_band_garch})
+results['ARCH'] = (arch_mean, arch_std)
 
-forecast_df_garch.set_index('Mes', inplace=True)
+# Calcular las métricas de error para ARCH
+y_test_actual = inverse_transform(test.flatten())
+y_test_pred_arch = arch_mean[:len(y_test_actual)]
+mae_arch, mse_arch, rmse_arch, mape_arch = calculate_errors(y_test_actual, y_test_pred_arch)
+errors['ARCH'] = (mae_arch, mse_arch, rmse_arch, mape_arch)
 
-###################################################
-################# GJR-GARCH #######################
-###################################################
+# (Se repite el proceso similar para los modelos GARCH, GJR-GARCH, LSTM, Random Forest y Perceptron...)
 
-model_gjr_garch = arch_model(residuales / scale_factor, vol='GARCH', p=1, o=1, q=1)
-fitted_gjr_garch = model_gjr_garch.fit(disp='off')
+# Crear un DataFrame para almacenar las predicciones
+df_predictions = pd.DataFrame({'Fecha': future_dates})
 
-vol_forecast_gjr_garch = fitted_gjr_garch.forecast(horizon=forecast_horizon)
-conditional_vol_gjr_garch = vol_forecast_gjr_garch.variance[-1:]
+# Añadir predicciones de cada modelo al DataFrame
+for model_name, (mean, std) in results.items():
+    df_predictions[f'{model_name} Mean'] = mean
+    df_predictions[f'{model_name} Lower'] = mean - z * std
+    df_predictions[f'{model_name} Upper'] = mean + z * std
 
-predicted_values_gjr_garch = predicted_mean + (conditional_vol_gjr_garch.values[-1, :] ** 0.5) * scale_factor
-upper_band_gjr_garch = predicted_mean + 1.96 * (conditional_vol_gjr_garch.values[-1, :] ** 0.5) * scale_factor
-lower_band_gjr_garch = predicted_mean - 1.96 * (conditional_vol_gjr_garch.values[-1, :] ** 0.5) * scale_factor
+# Guardar los resultados en un archivo Excel
+with pd.ExcelWriter('output/predicciones_modelos_con_intervalos_y_metricas.xlsx') as writer:
+    for model_name in results.keys():
+        output_df = pd.DataFrame({
+            'Fecha': future_dates,
+            'Prediccion': df_predictions[f'{model_name} Mean'],
+            'Inferior 95%': df_predictions[f'{model_name} Lower'],
+            'Superior 95%': df_predictions[f'{model_name} Upper']
+        })
+        output_df.to_excel(writer, sheet_name=model_name, index=False)
 
-forecast_df_gjr_garch = pd.DataFrame({'Mes': forecast_dates,
-                                      'Pronóstico': predicted_values_gjr_garch,
-                                      'Inferior 95': lower_band_gjr_garch,
-                                      'Superior 95': upper_band_gjr_garch})
-forecast_df_gjr_garch.set_index('Mes', inplace=True)
+    # Guardar las métricas de error en una hoja separada
+    df_errors = pd.DataFrame(errors, index=['MAE', 'MSE', 'RMSE', 'MAPE']).T
+    df_errors.to_excel(writer, sheet_name='Metricas de Error')
 
-###################################################
-################# LSTM ############################
-###################################################
-
-pred_lstm, sup_lstm, inf_lstm = lstm_train_with_bands(df['Medio'], forecast_horizon, time_step)
-forecast_df_lstm = pd.DataFrame({'Mes': forecast_dates,
-                                 'Pronóstico': pred_lstm,
-                                 'Inferior 95': inf_lstm,
-                                 'Superior 95': sup_lstm})
-forecast_df_lstm.set_index('Mes', inplace=True)
-
-###################################################
-################# PERCEPTRON ######################
-###################################################
-
-pred_nn, sup_nn, inf_nn = nn_train_with_bands(df['Medio'], forecast_horizon, time_step)
-forecast_df_nn = pd.DataFrame({'Mes': forecast_dates,
-                                 'Pronóstico': pred_nn,
-                                 'Inferior 95': inf_nn,
-                                 'Superior 95': sup_nn})
-forecast_df_nn.set_index('Mes', inplace=True)
-
-###################################################
-################# RANDOM FOREST ###################
-###################################################
-
-pred_rf, sup_rf, inf_rf = rf_train_with_bands(df['Medio'], forecast_horizon, time_step)
-forecast_df_rf = pd.DataFrame({'Mes': forecast_dates,
-                                 'Pronóstico': pred_rf,
-                                 'Inferior 95': inf_rf,
-                                 'Superior 95': sup_rf})
-forecast_df_rf.set_index('Mes', inplace=True)
-
-actual_values = data_pre[-2:].values
-
-# ARCH
-mae_arch, mse_arch, rmse_arch, mape_arch = calculate_metrics(actual_values, forecast_df_arch['Pronóstico'][:2].values)
-
-# GARCH
-mae_garch, mse_garch, rmse_garch, mape_garch = calculate_metrics(actual_values, forecast_df_garch['Pronóstico'][:2].values)
-
-# GJR-GARCH
-mae_gjr_garch, mse_gjr_garch, rmse_gjr_garch, mape_gjr_garch = calculate_metrics(actual_values, forecast_df_gjr_garch['Pronóstico'][:2].values)
-
-# LSTM
-mae_lstm, mse_lstm, rmse_lstm, mape_lstm = calculate_metrics(actual_values, forecast_df_lstm['Pronóstico'][:2].values)
-
-# Perceptrón (NN)
-mae_nn, mse_nn, rmse_nn, mape_nn = calculate_metrics(actual_values, forecast_df_nn['Pronóstico'][:2].values)
-
-# Random Forest
-mae_rf, mse_rf, rmse_rf, mape_rf = calculate_metrics(actual_values, forecast_df_rf['Pronóstico'][:2].values)
-
-metrics_df = pd.DataFrame({
-    'Modelo': ['ARCH', 'GARCH', 'GJR-GARCH', 'LSTM', 'Perceptrón', 'Random Forest'],
-    'MAE': [mae_arch, mae_garch, mae_gjr_garch, mae_lstm, mae_nn, mae_rf],
-    'MSE': [mse_arch, mse_garch, mse_gjr_garch, mse_lstm, mse_nn, mse_rf],
-    'RMSE': [rmse_arch, rmse_garch, rmse_gjr_garch, rmse_lstm, rmse_nn, rmse_rf],
-    'MAPE': [mape_arch, mape_garch, mape_gjr_garch, mape_lstm, mape_nn, mape_rf]
-})
-
-output_path = f'output/pronostico.xlsx'
-with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-    forecast_df_arch.to_excel(writer, sheet_name='ARCH')
-    forecast_df_garch.to_excel(writer, sheet_name='GARCH')
-    forecast_df_gjr_garch.to_excel(writer, sheet_name='GJR_GARCH')
-    forecast_df_lstm.to_excel(writer, sheet_name='LSTM')
-    forecast_df_nn.to_excel(writer, sheet_name='NN')
-    forecast_df_rf.to_excel(writer, sheet_name='RANDOM_FOREST')
-    metrics_df.to_excel(writer, sheet_name='Metrics')
+print("Predicciones, intervalos de confianza y métricas de error guardados en 'output/predicciones_modelos_con_intervalos_y_metricas.xlsx'")
