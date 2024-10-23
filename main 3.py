@@ -149,6 +149,33 @@ aic_garch = garch_fit.aic
 bic_garch = garch_fit.bic
 aic_bic_scores['GARCH'] = (aic_garch, bic_garch)
 
+# Modelo GJR-GARCH
+gjr_model_instance = arch_model(train, vol='Garch', p=1, o=1, q=1)
+gjr_fit = gjr_model_instance.fit(disp='off')
+gjr_forecast = gjr_fit.forecast(horizon=forecast_horizon, method='simulation')
+
+# Predicciones para GJR-GARCH
+gjr_mean_scaled = gjr_forecast.simulations.values.mean(axis=1).ravel()[:forecast_horizon]
+gjr_std_scaled = gjr_forecast.simulations.values.std(axis=1).ravel()[:forecast_horizon] * scaling_factor
+
+# Desescalar la media
+gjr_mean = inverse_transform(gjr_mean_scaled)
+
+# Calcular la desviación estándar en la escala original
+gjr_std = gjr_std_scaled * (scaler.data_max_ - scaler.data_min_)
+
+results['GJR-GARCH'] = (gjr_mean, gjr_std)
+
+# Calcular las métricas de error para GJR-GARCH
+y_test_pred_gjr = gjr_mean[:len(y_test_actual)]
+mae_gjr, mse_gjr, rmse_gjr, mape_gjr = calculate_errors(y_test_actual, y_test_pred_gjr)
+errors['GJR-GARCH'] = (mae_gjr, mse_gjr, rmse_gjr, mape_gjr)
+
+# Obtener AIC y BIC para GARCH
+aic_jgr_garch = gjr_fit.aic
+bic_jgr_garch = gjr_fit.bic
+aic_bic_scores['GJR-GARCH'] = (aic_jgr_garch, bic_jgr_garch)
+
 # Modelo LSTM con Dropout y predicción personalizada para Dropout durante la predicción
 inputs = Input(shape=(1, 1))
 x = LSTM(50, return_sequences=True)(inputs)
